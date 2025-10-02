@@ -45,6 +45,7 @@
 ;; (global-set-key [S-f9] 'utr-find-current)
 ;; (global-set-key [M-f9] 'utr-prev-test)
 ;; (global-set-key [S-M-f9] 'utr-next-test)
+;; (global-set-key [s-f9] 'utr-find-test)
 ;;
 ;;; Code:
 
@@ -52,6 +53,7 @@
 
 (require 'compile)
 (require 'cl-extra)
+(require 'project-find)
 
 (defgroup utr nil
   "Run unit tests across multiple languages."
@@ -72,11 +74,11 @@
   :type 'sexp
   :group 'utr)
 
-(defface utr-testname '((t :inherit font-lock-function-name-face))
+(defface utr-testname-face '((t :inherit font-lock-function-name-face))
   "Utr face use to highlight test names."
   :group 'utr-faces)
 
-(defface utr-filename '((t :inherit font-lock-type-face))
+(defface utr-filename-face '((t :inherit font-lock-type-face))
   "Utr face use to highlight test file names."
   :group 'utr-faces)
 
@@ -96,10 +98,25 @@ Set this to the key of the custom test runner you want to use.")
 (defvar utr-default-history nil
   "History for choosing default test commands.")
 
-(defvar utr--current nil)
+(defvar utr--current nil
+  "Utr history starting at the current test.")
+
+(defvar utr-pf-filter-re ""
+  "The Regexp used to filter `project-find' results for listing tests.")
 
 (defconst utr--ert-deftest-re "^[[:space:]]*(ert-deftest \\([^[:space:]]+\\)"
   "Regexp to find ert tests.")
+
+(defconst utr--key1 (propertize "1" 'invisible t)
+  "Key for sorting history list.")
+
+(defconst utr--key2 (propertize "2" 'invisible t)
+  "Key for sorting history list.")
+
+(defvar-keymap utr-pf-local-map
+  :doc "Keymap for `project-find-mode'."
+  :parent project-find-mode-map
+  "M-<delete>" #'utr-pf-delete-selected)
 
 (defun utr--data-directory ()
   "Return the persistent data directory for utr.
@@ -225,6 +242,24 @@ Keep the list size to no larger that `utr-history-size'."
                (setq pos (cdr pos))))))
   (utr-find-current))
 
+(defun utr-parent-in-history (entry)
+  "Search history for item whom's cdr is ENTRY."
+  (let ((pos utr-history))
+    (while (and pos (not (eq (cdr pos) entry)))
+      (setq pos (cdr pos)))
+    pos))
+
+(defun utr-cdr-in-history (key &optional alist pred)
+  "Search history ALIST returning the cdr where PRED is true.
+PRED is called with two arguments; the car of an element and KEY.
+Uses `utr-history' if LIST is nil.  PRED defaults to `equal'."
+  (let ((pos (or alist utr-history)))
+    (unless pred
+      (setq pred #'equal))
+    (while (and pos (not (funcall pred (caar pos) key)))
+      (setq pos (cdr pos)))
+    pos))
+
 (defun utr-find-current ()
   "Find the buffer the last test was run from.
 If the buffer is already selected ensure the `point' is at the place it
@@ -242,10 +277,10 @@ was run from."
   "Return the name of the current test as a string.
 Use `utr-history' if LIST is nil."
   (if utr-history
-    (let ((fn (or (utr--path list) ""))
-          (tn (or (utr--testname list) "all")))
-      (format "%s in: %s" (propertize tn 'face 'utr-testname) (propertize fn 'face 'utr-filename))
-      )
+      (let ((fn (or (utr--path list) ""))
+            (tn (or (utr--testname list) "all")))
+        (format "%s in: %s" (propertize tn 'face 'utr-testname-face) (propertize fn 'face 'utr-filename-face))
+        )
     (error "Test not found")))
 
 (defun utr-current-buffer (&optional list)
@@ -393,6 +428,110 @@ TEST-NAME contains the test to run or nil to run all tests."
   (save-some-buffers)
   (compilation-start (utr--elisp-test-command test-name)
                      'utr-default-test-mode 'utr--default-test-buffer-name))
+
+(defun utr-pf-list-tests ()
+  "List tests matching TEXT filter using `project-find'."
+  (let ((inhibit-modification-hooks t)
+        (inhibit-read-only t))
+    (save-excursion
+      (pf-goto-results)
+      (delete-region (point) (point-max))
+      (let ((inhibit-read-only t)
+            (list utr-history)
+            (l (length default-directory))
+            path key)
+        (while list
+          (setq path (utr--path list))
+          (setq key (if (string-prefix-p default-directory path)
+                        (progn (setq path (substring path l)) utr--key1)
+                      utr--key2))
+          (when (string-match-p utr-pf-filter-re path)
+            (pf-add-line (concat (propertize key 'utr-test list)
+                                 (propertize path 'face 'utr-filename-face)
+                                 ": "
+                                 (propertize (utr--testname list) 'face 'utr-testname-face))))
+          (setq list (cdr list)))
+        (pf-goto-results)
+        (pf-post-process-filter (point) 0)))))
+
+(defun utr-pf-build-regex (text)
+  "Build `utr-pf-filter-re' from TEXT."
+  (setq utr-pf-filter-re
+        (concat
+         (mapconcat (lambda (char)
+                      (regexp-quote (char-to-string char)))
+                    text
+                    ".*")
+         ".*")))
+
+(defun utr-pf-find-test (start _end)
+  "Find test located in `project-find' buffer at START.
+This function is used to override `pf-find-function' and assumes that it
+is always called from the `project-find' buffer."
+  (let ((entry (plist-get (text-properties-at start) 'utr-test)))
+    (if (not entry)
+        (error "Test not found")
+      (setq utr--current entry)
+      (pf-quit)
+      (utr-find-current))))
+
+(defun utr-pf-filter-changed (text _original)
+  "Update results with new filter TEXT."
+  (let ((inhibit-modification-hooks t)
+        (inhibit-read-only t))
+    (utr-pf-build-regex text)
+    (utr-pf-list-tests)))
+
+(defun utr-find-test ()
+  "Find a test from `utr-history'.
+Also allow managing the test history"
+  (interactive)
+  (let ((inhibit-modification-hooks t)
+        (inhibit-read-only t)
+        (dir default-directory))
+    (pf-init)
+    (use-local-map utr-pf-local-map)
+
+    (setq default-directory dir
+          utr-pf-filter-re ""
+          pf-find-function #'utr-pf-find-test
+          pf-filter-changed-function #'utr-pf-filter-changed)
+    (pf-clear-output)
+    (utr-pf-list-tests)))
+
+(defun utr-toggle-test-buffer ()
+  "Based on major-mode toggle between test buffer and production buffer."
+  (interactive)
+  (cond
+   ((eq major-mode 'emacs-lisp-mode)
+    (let ((other (if (string-suffix-p "-tests.el" (or buffer-file-truename ""))
+                     (concat (substring buffer-file-truename 0 -9) ".el")
+                   (if (string-suffix-p ".el" (or buffer-file-truename ""))
+                       (concat (substring buffer-file-truename 0 -3) "-tests.el")
+                     ""))))
+      (when (file-exists-p other)
+        (find-file other))))))
+
+(defun utr-pf-delete-selected (&optional arg)
+  "Delete selected test.
+With plain \\[universal-argument] for ARG, delete all tests for selected file."
+  (interactive "P")
+  (cond
+   ((and (consp arg) (= (prefix-numeric-value arg) 4))
+    (let ((entry (plist-get (text-properties-at (pf-selected-start)) 'utr-test))
+          (curr (car utr--current)))
+      (setq utr-history (assoc-delete-all
+                         (utr--path entry) utr-history
+                         (lambda (a b) (equal (cadr a) b))))
+      (setq utr--current (utr-cdr-in-history (caar curr)))
+      (utr-pf-list-tests)))
+   (t
+    (let* ((entry (plist-get (text-properties-at (pf-selected-start)) 'utr-test))
+           (p (utr-parent-in-history entry)))
+      (if p
+          (setcdr p (cdr entry))
+        (setq utr-history (cdr entry))))
+    (utr-pf-list-tests))))
 
 (provide 'utr)
 ;;; utr.el ends here

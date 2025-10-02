@@ -13,11 +13,18 @@ DEPS  =
 LOAD_PATH  ?= $(addprefix -L ../,$(DEPS))
 LOAD_PATH  += -L .
 
-test: $(PKG).elc
-	$(EMACS) -Q --batch -l  $(PKG)-tests.el \
+test: .emacs.d/init.el $(PKG).elc
+	$(EMACS) -Q --init-directory=./.emacs.d --batch $(LOAD_PATH) \
+	-l .emacs.d/init.el \
+	-l  $(PKG)-tests.el \
 	--eval '(ert-run-tests-batch (quote $(SELECTOR)))'
+
+.emacs.d/init.el: build/init.el
+	@mkdir -p .emacs.d
+	@cp $< $@
 
 $(PKG).elc: $(PKG).el
 	@rm -f $@
-	$(EMACS) -Q --batch $(LOAD_PATH) \
+	$(EMACS) -Q --init-directory=./.emacs.d --batch $(LOAD_PATH) \
+	-l .emacs.d/init.el \
 	--eval '(byte-compile-file "$(<)")'

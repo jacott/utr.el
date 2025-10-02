@@ -6,31 +6,38 @@
 (require 'ert-x)
 (require 'cl-lib)
 (require 'compile)
-
-(load-file "./utr.el") ;; don't rely on utr being in load-path
+(require 'project-find-test-helper)
 (require 'utr)
 
 (defvar-local utr-my-args nil)
 
+(defconst utr-default-dir default-directory)
+
 (defmacro utr-my-test-fixture (&rest body)
   "A fixture to set up a common environment for tests.  BODY is the test code."
-  `(ert-with-temp-directory utr-temp-project
-     (let ((user-emacs-directory utr-temp-project)
-           (utr-history nil)
-           (utr--current nil)
-           (utr-history-size 5)
-           (utr-default-history nil)
-           (inhibit-message t)
-           (utr-elisp-test-command (list "echo make SELECTOR=" :selector " test")))
-       (unwind-protect
-           (progn ,@body)
+  `(ert-with-temp-directory
+    utr-temp-project
+    (let ((user-emacs-directory utr-temp-project)
+          (utr-history nil)
+          (utr-pf-filter-re "")
+          (utr--current nil)
+          (utr-history-size 5)
+          (utr-default-history nil)
+          (inhibit-message t)
+          (utr-elisp-test-command (list "echo make SELECTOR=" :selector " test")))
 
-         (when (get-buffer "*test-run*")
-           (let ((kill-buffer-query-functions nil))
-             (kill-buffer "*test-run*")))
-       ;; keep flycheck happy
-         (or user-emacs-directory utr-history utr--current
-             utr-history-size utr-default-history )))))
+      (switch-to-buffer "*scratch*")
+      (setq default-directory utr-default-dir)
+
+      (unwind-protect
+          (progn ,@body)
+
+        (when (get-buffer "*test-run*")
+          (let ((kill-buffer-query-functions nil))
+            (kill-buffer "*test-run*")))
+        ;; keep flycheck happy
+        (or user-emacs-directory utr-history utr--current
+            utr-history-size utr-default-history )))))
 
 (defun log-msg (format-string &rest args)
   "Log a debug message.
@@ -163,8 +170,8 @@ FORMAT-STRING and ARGS are passed to `format'."
                      (when (equal (cadr args) "prev")
                        (set (caddr args) (list exp-command))
                        exp-command))))))
-         (should (equal (utr-choose-default t) (list :command exp-command)))
-         (should (equal utr-default-history (list exp-command)))))))
+       (should (equal (utr-choose-default t) (list :command exp-command)))
+       (should (equal utr-default-history (list exp-command)))))))
 
 (ert-deftest utr-run-default ()
   (utr-my-test-fixture
@@ -219,5 +226,71 @@ FORMAT-STRING and ARGS are passed to `format'."
                   '(:a 1 :b 2 :c 1 :d 3 :e 4)
                   (lambda (_k v) (> v 1)))
                  '(:b 2 :d 3 :e 4))))
+
+(ert-deftest utr-pf-build-regex ()
+  (utr-my-test-fixture
+   (should (equal (utr-pf-build-regex "abc") "a.*b.*c.*"))
+   ))
+
+(ert-deftest utr-filter-find-test ()
+  (utr-my-test-fixture
+   (pf-my-test-fixture
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test1") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t2.el") "test2") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test3") :point 1))
+    (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
+
+    (utr-find-test)
+    (pf-my-add-keys "t1")
+    (goto-char (point-min))
+    (should (not (search-forward "t2" nil t)))
+    (should (not (search-forward "another" nil t))))))
+
+
+(ert-deftest utr-pf-delete-selected-all-for-filename ()
+  (utr-my-test-fixture
+   (pf-my-test-fixture
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test1") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t2.el") "test2") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test3") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test4") :point 1))
+    (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
+
+    (utr-find-test)
+    (utr-pf-delete-selected)
+    (pf-goto-results)
+    (should (search-forward "t1.el" nil t))
+    (should (looking-at ": test3"))
+    (utr-pf-delete-selected '(4))
+    (pf-goto-results)
+    (should (not (search-forward "t1.el" nil t)))
+    )))
+
+(ert-deftest utr-find-test ()
+  (utr-my-test-fixture
+   (pf-my-test-fixture
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test1") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t2.el") "test2") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test3") :point 1))
+    (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
+
+    (utr-find-test)
+    (should (eq (current-local-map) utr-pf-local-map))
+    (should (pf--wait-for (lambda ()
+                            (goto-char (point-min))
+                            (search-forward "1test/t1.el: test3" nil t))))
+    (forward-line 0)
+    (should (plist-get (text-properties-at (point)) 'invisible))
+    (forward-char)
+    (should (eq 'utr-filename-face (plist-get (text-properties-at (point)) 'face)))
+    (search-forward ": t")
+    (should (eq 'utr-testname-face (plist-get (text-properties-at (point)) 'face)))
+    (search-forward "2~/src/another-test")
+    (forward-line 0)
+    (should (plist-get (text-properties-at (point)) 'invisible))
+    (pf-forward-line 2)
+    (pf-find-selected)
+    (should (equal (buffer-name) "t2.el"))
+    (should (equal (utr--testname) "test2")))))
 
 ;;; utr-tests.el ends here
