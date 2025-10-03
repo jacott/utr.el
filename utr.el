@@ -74,6 +74,11 @@
   :type 'sexp
   :group 'utr)
 
+(defcustom utr-history-tests-per-file 3
+  "How many tests to remember per test file."
+  :type 'natnum
+  :group 'utr)
+
 (defface utr-testname-face '((t :inherit font-lock-function-name-face))
   "Utr face use to highlight test names."
   :group 'utr-faces)
@@ -215,9 +220,20 @@ See `utr-run-one' and `utr-run-file'."
 Keep the list size to no larger that `utr-history-size'."
   (unless (equal list (car utr-history))
     (setq utr--current nil)
-    (setq utr-history (cons list (ntake
-                                  (- utr-history-size 1)
-                                  (assoc-delete-all (car list) utr-history))))
+    (let ((count 0)
+          (path (utr--entry-path (car list))))
+      (setq utr-history (cons list
+                              (ntake
+                               (- utr-history-size 1)
+                               (assoc-delete-all
+                                (car list) utr-history
+                                (lambda (a b)
+                                  (when (equal (utr--entry-path a) path)
+                                    (setq count (1+ count))
+                                    (or (>= count utr-history-tests-per-file)
+                                        (equal a b))
+                                    )
+                                  ))))))
     (utr--save-history)))
 
 (defun utr--save-history ()
@@ -298,7 +314,11 @@ Use `utr-history' if LIST is nil."
 
 (defun utr--path (&optional list)
   "Return file path from LIST or, if nil, `utr--history'."
-  (cadaar (utr--history list)))
+  (utr--entry-path (caar (utr--history list))))
+
+(defun utr--entry-path (entry)
+  "Return file path from history ENTRY."
+  (cadr entry))
 
 (defun utr--testname (&optional list)
   "Return test name from LIST or, if nil, `utr--history'."
@@ -522,7 +542,7 @@ With plain \\[universal-argument] for ARG, delete all tests for selected file."
           (curr (car utr--current)))
       (setq utr-history (assoc-delete-all
                          (utr--path entry) utr-history
-                         (lambda (a b) (equal (cadr a) b))))
+                         (lambda (a b) (equal (utr--entry-path a) b))))
       (setq utr--current (utr-cdr-in-history (caar curr)))
       (utr-pf-list-tests)))
    (t

@@ -67,6 +67,20 @@ FORMAT-STRING and ARGS are passed to `format'."
         (plist-put plist :test-name "my-test")
       plist)))
 
+(ert-deftest utr-history-tests-per-file ()
+  "Ensure utr-history-tests-per-file is obeyed."
+  (utr-my-test-fixture
+   (utr--add-test '((my-test1 "~/file1.foo" "test1") :point 1))
+   (let ((utr-history-tests-per-file 2)
+         (old-test (caar utr-history)))
+     (utr--add-test '((my-test1 "~/file1.foo" "test2") :point 1))
+     (should (assoc old-test utr-history #'eq))
+
+     (utr--add-test '((my-test1 "~/file1.foo" "test3") :point 1))
+     (should (not (assoc old-test utr-history)))
+
+     )))
+
 (ert-deftest utr-history ()
   "Test history manipulation."
   (utr-my-test-fixture
