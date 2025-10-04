@@ -1,4 +1,4 @@
-;;; utr.el --- Run unit tests for different frameworks from within Emacs  -*- lexical-binding: t; -*-
+;;; utr.el --- Run unit tests for different frameworks  -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2025 Geoff Jacobsen <geoffjacobsen@gmail.com>
 ;;
@@ -19,13 +19,13 @@
 ;;
 ;;; Commentary:
 ;;
-;; UTR, which stands for Unit Test Runner, is an Emacs package designed to
-;; streamline the process of running unit tests.  It provides a uniform
-;; interface for testing projects written in various programming languages using
-;; differing frameworks, allowing users to run tests for a single function, a
-;; specific file, a directory, or an entire project with a single keypress.  The
-;; package automatically saves previous test configurations, enabling users to
-;; quickly re-run their most recent tests without needing to re-configure them.
+;; UTR, which stands for Unit Test Runner, is a package designed to streamline
+;; the process of running unit tests.  It provides a uniform interface for
+;; testing projects written in various programming languages using differing
+;; frameworks, allowing users to run tests for a single function, a specific
+;; file, a directory, or an entire project with a single keypress.  The package
+;; automatically saves previous test configurations, enabling users to quickly
+;; re-run their most recent tests without needing to re-configure them.
 ;;
 ;; This feature allows you to run your tests, make a small change, and then
 ;; immediately re-run the same test with a single command.  UTR also makes it
@@ -118,7 +118,7 @@ Set this to the key of the custom test runner you want to use.")
 (defvar-keymap utr-pf-local-map
   :doc "Keymap for `project-find-mode'."
   :parent project-find-mode-map
-  "M-<delete>" #'utr-pf-delete-selected)
+  "M-<delete>" #'utr-pf-forget-selected)
 
 (defun utr--data-directory ()
   "Return the persistent data directory for utr.
@@ -395,7 +395,6 @@ the command to run."
   (ansi-color-apply-on-region compilation-filter-start (point))
   (read-only-mode 0))
 
-
 (define-compilation-mode utr-default-test-mode "Unit Test"
   "Compilation mode with enhanced coloring of buffer."
   (add-hook 'compilation-filter-hook 'utr--colorize-compilation-buffer))
@@ -518,7 +517,7 @@ Also allow managing the test history"
       (when (file-exists-p other)
         (find-file other))))))
 
-(defun utr-pf-delete-selected (&optional arg)
+(defun utr-pf-forget-selected (&optional arg)
   "Delete selected test.
 With plain \\[universal-argument] for ARG, delete all tests for selected file."
   (interactive "P")

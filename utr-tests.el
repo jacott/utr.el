@@ -255,7 +255,7 @@ FORMAT-STRING and ARGS are passed to `format'."
     (should (not (search-forward "another" nil t))))))
 
 
-(ert-deftest utr-pf-delete-selected-all-for-filename ()
+(ert-deftest utr-pf-forget-selected-all-for-filename ()
   (utr-my-test-fixture
    (pf-my-test-fixture
     (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test1") :point 1))
@@ -265,11 +265,11 @@ FORMAT-STRING and ARGS are passed to `format'."
     (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
 
     (utr-find-test)
-    (utr-pf-delete-selected)
+    (utr-pf-forget-selected)
     (pf-goto-results)
     (should (search-forward "t1.el" nil t))
     (should (looking-at ": test3"))
-    (utr-pf-delete-selected '(4))
+    (utr-pf-forget-selected '(4))
     (pf-goto-results)
     (should (not (search-forward "t1.el" nil t)))
     )))
