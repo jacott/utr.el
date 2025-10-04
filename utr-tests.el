@@ -19,7 +19,6 @@
     utr-temp-project
     (let ((user-emacs-directory utr-temp-project)
           (utr-history nil)
-          (utr-pf-filter-re "")
           (utr--current nil)
           (utr-history-size 5)
           (utr-default-history nil)
@@ -240,11 +239,6 @@ FORMAT-STRING and ARGS are passed to `format'."
                   '(:a 1 :b 2 :c 1 :d 3 :e 4)
                   (lambda (_k v) (> v 1)))
                  '(:b 2 :d 3 :e 4))))
-
-(ert-deftest utr-pf-build-regex ()
-  (utr-my-test-fixture
-   (should (equal (utr-pf-build-regex "abc") "a.*b.*c.*"))
-   ))
 
 (ert-deftest utr-filter-find-test ()
   (utr-my-test-fixture

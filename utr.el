@@ -106,9 +106,6 @@ Set this to the key of the custom test runner you want to use.")
 (defvar utr--current nil
   "Utr history starting at the current test.")
 
-(defvar utr-pf-filter-re ""
-  "The Regexp used to filter `project-find' results for listing tests.")
-
 (defconst utr--ert-deftest-re "^[[:space:]]*(ert-deftest \\([^[:space:]]+\\)"
   "Regexp to find ert tests.")
 
@@ -218,7 +215,7 @@ See `utr-run-one' and `utr-run-file'."
 (defun utr--add-test (list)
   "Add LIST to `utr-history' removing any duplicates.
 Keep the list size to no larger that `utr-history-size'."
-  (unless (equal list (car utr-history))
+  (unless (equal list (car (utr--history)))
     (setq utr--current nil)
     (let ((count 0)
           (path (utr--entry-path (car list))))
@@ -451,38 +448,27 @@ TEST-NAME contains the test to run or nil to run all tests."
 
 (defun utr-pf-list-tests ()
   "List tests matching TEXT filter using `project-find'."
-  (let ((inhibit-modification-hooks t)
-        (inhibit-read-only t))
-    (save-excursion
+  (save-excursion
+    (let ((inhibit-modification-hooks t)
+          (inhibit-read-only t)
+          (list utr-history)
+          (l (length default-directory))
+          path key)
       (pf-goto-results)
       (delete-region (point) (point-max))
-      (let ((inhibit-read-only t)
-            (list utr-history)
-            (l (length default-directory))
-            path key)
-        (while list
-          (setq path (utr--path list))
-          (setq key (if (string-prefix-p default-directory path)
-                        (progn (setq path (substring path l)) utr--key1)
-                      utr--key2))
-          (when (string-match-p utr-pf-filter-re path)
-            (pf-add-line (concat (propertize key 'utr-test list)
-                                 (propertize path 'face 'utr-filename-face)
-                                 ": "
-                                 (propertize (utr--testname list) 'face 'utr-testname-face))))
-          (setq list (cdr list)))
-        (pf-goto-results)
-        (pf-post-process-filter (point) 0)))))
-
-(defun utr-pf-build-regex (text)
-  "Build `utr-pf-filter-re' from TEXT."
-  (setq utr-pf-filter-re
-        (concat
-         (mapconcat (lambda (char)
-                      (regexp-quote (char-to-string char)))
-                    text
-                    ".*")
-         ".*")))
+      (while list
+        (setq path (utr--path list))
+        (setq key (if (string-prefix-p default-directory path)
+                      (progn (setq path (substring path l)) utr--key1)
+                    utr--key2))
+        (when (string-match-p pf-filter-re path)
+          (pf-add-line (concat (propertize key 'utr-test list)
+                               (propertize path 'face 'utr-filename-face)
+                               ": "
+                               (propertize (utr--testname list) 'face 'utr-testname-face))))
+        (setq list (cdr list)))
+      (pf-goto-results)
+      (pf-post-process-filter (point) 0))))
 
 (defun utr-pf-find-test (start _end)
   "Find test located in `project-find' buffer at START.
@@ -499,7 +485,7 @@ is always called from the `project-find' buffer."
   "Update results with new filter TEXT."
   (let ((inhibit-modification-hooks t)
         (inhibit-read-only t))
-    (utr-pf-build-regex text)
+    (pf-build-regex text)
     (utr-pf-list-tests)))
 
 (defun utr-find-test ()
@@ -513,7 +499,7 @@ Also allow managing the test history"
     (use-local-map utr-pf-local-map)
 
     (setq default-directory dir
-          utr-pf-filter-re ""
+          pf-filter-re ""
           pf-find-function #'utr-pf-find-test
           pf-filter-changed-function #'utr-pf-filter-changed)
     (pf-clear-output)
