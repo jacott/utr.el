@@ -109,6 +109,9 @@ Set this to the key of the custom test runner you want to use.")
 (defconst utr--ert-deftest-re "^[[:space:]]*(ert-deftest \\([^[:space:]]+\\)"
   "Regexp to find ert tests.")
 
+(defconst utr--ert-defun-re "^[[:space:]]*(defun \\([^[:space:]]+\\)"
+  "Regexp to find containing defun.")
+
 (defconst utr--key1 (propertize "1" 'invisible t)
   "Key for sorting history list.")
 
@@ -412,7 +415,7 @@ the command to run."
   "Move backward out of one level of parentheses.  Return t if successful."
   (condition-case _
       (progn
-        (up-list -1 t)
+        (up-list -1 t t)
         t)
     (scan-error
      (< (point-min) (forward-list -1)))))
@@ -420,13 +423,36 @@ the command to run."
 (defun utr-choose-elisp (test-current-method)
   "Choose the elisp test to run based on where `point' is.
 TEST-CURRENT-METHOD is t to run one test or nil run entire file."
-  (if test-current-method
-      (save-excursion
-        (while (and (utr--up-list) (not (looking-at utr--ert-deftest-re))))
-        (if-let* ((text (match-string-no-properties 1)))
-            (list :test-name text)
-          (error "Test not found")))
-    (list :test-name "t")))
+  (save-excursion
+    (if (string-suffix-p "-tests.el" buffer-file-truename)
+        (list :test-name
+              (if test-current-method
+                  (progn
+                    (while (and (not (looking-at utr--ert-deftest-re)) (utr--up-list)))
+                    (if-let* ((text (match-string-no-properties 1)))
+                        text
+                      (error "Test not found")))
+                "t"))
+      (let* ((path (replace-regexp-in-string ".el$" "-tests.el" buffer-file-truename))
+             (tbuf (if (file-exists-p path)
+                       (find-file-noselect path)
+                     (error "Test file not found %s" path))))
+        (if test-current-method
+            (progn
+              (while (and (not (looking-at utr--ert-defun-re))
+                          (utr--up-list)))
+              (if-let* ((text (match-string-no-properties 1)))
+                  (with-current-buffer tbuf
+                    (goto-char (point-min))
+                    (if (search-forward (concat "(ert-deftest " text) nil t)
+                        (let ((start (- (point) (length text))))
+                          (search-forward " ")
+                          (backward-char 1)
+                          (list :test-name (buffer-substring-no-properties start (point))
+                                :path path :point (point)))
+                      (error "Test not found")))))
+          (with-current-buffer tbuf
+            (list :test-name "t" :path path :point (point-min))))))))
 
 (defun utr--elisp-test-command (test-name)
   "Build elisp test command for TEST-NAME."
@@ -464,7 +490,7 @@ TEST-NAME contains the test to run or nil to run all tests."
           (pf-add-line (concat (propertize key 'utr-test list)
                                (propertize path 'face 'utr-filename-face)
                                ": "
-                               (propertize (utr--testname list) 'face 'utr-testname-face))))
+                               (propertize (or (utr--testname list) "") 'face 'utr-testname-face))))
         (setq list (cdr list)))
       (pf-goto-results)
       (pf-post-process-filter (point) 0))))

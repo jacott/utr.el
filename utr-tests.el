@@ -13,6 +13,8 @@
 
 (defconst utr-default-dir default-directory)
 
+(defconst utr-test-file-name (abbreviate-file-name load-file-name))
+
 (defmacro utr-my-test-fixture (&rest body)
   "A fixture to set up a common environment for tests.  BODY is the test code."
   `(ert-with-temp-directory
@@ -195,10 +197,21 @@ FORMAT-STRING and ARGS are passed to `format'."
      (forward-line 3)
      (should (looking-at "echo my-test-command 123")))))
 
+(ert-deftest utr-choose-elisp-from-prod-code ()
+  (utr-my-test-fixture
+   (find-file utr-test-file-name)
+   (search-forward "(ert-deftest utr-choose-elisp-from-prod-code")
+   (let ((pos (point)))
+     (find-file (replace-regexp-in-string "-tests.el$" ".el" utr-test-file-name))
+     (search-forward "(defun utr-choose-elisp (")
+     (should (equal (utr-choose-elisp t) `(:test-name "utr-choose-elisp-from-prod-code"
+                                                      :path ,utr-test-file-name
+                                                      :point ,pos))))))
+
 (ert-deftest utr-choose-elisp-one ()
   (utr-my-test-fixture
    (utr-my-with-temp-file
-    "my-file" ".eol"
+    "my-file" "-tests.el"
     (lambda ()
       (insert "\n\n(ert-deftest my-test () (my body))")
       (goto-char (point-min))
@@ -208,7 +221,7 @@ FORMAT-STRING and ARGS are passed to `format'."
 (ert-deftest utr-choose-elisp-file ()
   (utr-my-test-fixture
    (utr-my-with-temp-file
-    "my-file" ".eol"
+    "my-file" "-tests.el"
     (lambda ()
       (insert "\n\n(ert-deftest my-test () (my body))")
       (goto-char (point-min))
@@ -218,7 +231,7 @@ FORMAT-STRING and ARGS are passed to `format'."
 (ert-deftest utr-choose-elisp-one-not-found ()
   (utr-my-test-fixture
    (utr-my-with-temp-file
-    "my-file" ".eol"
+    "my-file" "-tests.el"
     (lambda ()
       (insert "\n\n(ert-defteeest my-test () (my body))")
       (goto-char (point-min))
