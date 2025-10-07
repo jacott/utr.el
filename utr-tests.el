@@ -264,6 +264,8 @@ FORMAT-STRING and ARGS are passed to `format'."
     (utr-find-test)
     (pf-my-add-keys "t1")
     (goto-char (point-min))
+    (forward-line)
+    (should (looking-at "^Tests: "))
     (should (not (search-forward "t2" nil t)))
     (should (not (search-forward "another" nil t))))))
 

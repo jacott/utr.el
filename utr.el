@@ -519,8 +519,8 @@ Also allow managing the test history"
   (interactive)
   (let ((inhibit-modification-hooks t)
         (inhibit-read-only t)
-        (dir default-directory))
-    (pf-init)
+        (dir (pf-root-dir)))
+    (pf-init "Tests: ")
     (use-local-map utr-pf-local-map)
 
     (setq default-directory dir
