@@ -473,33 +473,50 @@ TEST-NAME contains the test to run or nil to run all tests."
 
 (defun utr-pf-list-tests ()
   "List tests matching TEXT filter using `project-find'."
-  (save-excursion
-    (let ((inhibit-modification-hooks t)
-          (inhibit-read-only t)
-          (list utr-history)
-          (l (length default-directory))
-          path key)
-      (pf-goto-results)
-      (delete-region (point) (point-max))
-      (while list
-        (setq path (utr--path list))
-        (setq key (if (string-prefix-p default-directory path)
-                      (progn (setq path (substring path l)) utr--key1)
-                    utr--key2))
-        (when (string-match-p pf-filter-re path)
-          (pf-add-line (concat (propertize key 'utr-test list)
-                               (propertize path 'face 'utr-filename-face)
-                               ": "
-                               (propertize (or (utr--testname list) "") 'face 'utr-testname-face))))
-        (setq list (cdr list)))
-      (pf-goto-results)
-      (pf-post-process-filter (point) 0))))
+  (let ((list utr-history)
+        (l (length default-directory))
+        path key)
+    (while list
+      (setq path (utr--path list))
+      (setq key (if (string-prefix-p default-directory path)
+                    (progn (setq path (substring path l)) utr--key1)
+                  utr--key2))
+      (pf-match-line (concat key path ": " (or (utr--testname list) "")))
+      (setq list (cdr list)))))
 
-(defun utr-pf-find-test (start _end)
-  "Find test located in `project-find' buffer at START.
+(defun utr-pf-propertize-line (line)
+  "Add text properties to LINE before adding."
+  (put-text-property 0 1 'invisible t line)
+  (when-let* ((sep (string-search ": " line 1)))
+    (put-text-property 1 sep 'face 'utr-filename-face line)
+    (put-text-property (+ 2 sep) (length line) 'face 'utr-testname-face line)
+    )
+  line)
+
+(defun utr-get-test (start end)
+  "Get test details from `utr-find-test' buffer located in range START to END."
+  (when-let* ((line (buffer-substring-no-properties start end))
+              (sep (string-search ": " line 1))
+              (path (substring line 1 sep))
+              (testname (substring line (+ 2 sep) (length line)))
+              (list utr-history))
+    (let (found)
+      (while list
+        (if (and (string-suffix-p path (utr--path list))
+                 (if (string-empty-p testname)
+                     (not (utr--testname list))
+                   (equal (utr--testname list) testname)))
+            (setq utr--current list
+                  found list
+                  list nil)
+          (setq list (cdr list))))
+      found)))
+
+(defun utr-pf-select-test (start end)
+  "Find test located in `project-find' buffer between START and END.
 This function is used to override `pf-find-function' and assumes that it
 is always called from the `project-find' buffer."
-  (let ((entry (plist-get (text-properties-at start) 'utr-test)))
+  (let ((entry (utr-get-test start end)))
     (if (not entry)
         (error "Test not found")
       (setq utr--current entry)
@@ -524,11 +541,12 @@ Also allow managing the test history"
     (use-local-map utr-pf-local-map)
 
     (setq default-directory dir
-          pf-filter-re ""
-          pf-find-function #'utr-pf-find-test
-          pf-filter-changed-function #'utr-pf-filter-changed)
+          pf-find-function #'utr-pf-select-test
+          pf-propertize-line #'utr-pf-propertize-line
+          pf-resync-function #'utr-pf-list-tests)
     (pf-clear-output)
-    (utr-pf-list-tests)))
+    (pf-skip-prefix 1)
+    ))
 
 (defun utr-toggle-test-buffer ()
   "Based on major-mode toggle between test buffer and production buffer."
@@ -549,18 +567,28 @@ With plain \\[universal-argument] for ARG, delete all tests for selected file."
   (interactive "P")
   (cond
    ((and (consp arg) (= (prefix-numeric-value arg) 4))
-    (let ((entry (plist-get (text-properties-at (pf-selected-start)) 'utr-test))
-          (curr (car utr--current)))
-      (setq utr-history (assoc-delete-all
-                         (utr--path entry) utr-history
-                         (lambda (a b) (equal (utr--entry-path a) b))))
-      (setq utr--current (utr-cdr-in-history (caar curr)))
-      (utr-pf-list-tests)))
+    (when-let* ((entry (utr-get-test (pf-selected-start) (pf-selected-end))))
+      (let ((curr (car utr--current)))
+        (setq utr-history (assoc-delete-all
+                           (utr--path entry) utr-history
+                           (lambda (a b) (equal (utr--entry-path a) b))))
+        (setq utr--current (utr-cdr-in-history (caar curr)))
+        (pf-stop-matching)
+        (pf-resend-filter)
+        (pf-skip-prefix 1)
+        (pf-clear-output)
+        (utr-pf-list-tests))))
    (t
-    (let* ((entry (plist-get (text-properties-at (pf-selected-start)) 'utr-test))
+    (let* ((line (buffer-substring-no-properties (pf-selected-start) (pf-selected-end)))
+           (entry (utr-get-test (pf-selected-start) (pf-selected-end)))
            (p (utr-parent-in-history entry)))
       (if p
-          (setcdr p (cdr entry))
+          (let* ((inhibit-read-only t)
+                 (inhibit-modification-hooks t)
+                 (ans (pf-rm-line line)))
+            (setcdr p (cdr entry))
+            (when ans
+              (pf-post-process-filter (car ans) (cdr ans))))
         (setq utr-history (cdr entry))))
     (utr-pf-list-tests))))
 

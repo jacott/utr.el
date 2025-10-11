@@ -2,12 +2,12 @@
 
 ;;; Code:
 
+(require 'utr)
 (require 'ert)
 (require 'ert-x)
 (require 'cl-lib)
 (require 'compile)
 (require 'project-find-test-helper)
-(require 'utr)
 
 (defvar-local utr-my-args nil)
 
@@ -39,12 +39,6 @@
         ;; keep flycheck happy
         (or user-emacs-directory utr-history utr--current
             utr-history-size utr-default-history )))))
-
-(defun log-msg (format-string &rest args)
-  "Log a debug message.
-FORMAT-STRING and ARGS are passed to `format'."
-  (let ((inhibit-message nil))
-    (message "DEBUG: %s" (format format-string args))))
 
 (defun utr-my-with-temp-file (prefix suffix body)
   "Create a temp file with PREFIX and SUFFIX to run BODY with."
@@ -280,6 +274,9 @@ FORMAT-STRING and ARGS are passed to `format'."
     (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
 
     (utr-find-test)
+    (should (pf--wait-for (lambda ()
+                            (pf-goto-results)
+                            (search-forward "~/src/another" nil t))))
     (utr-pf-forget-selected)
     (pf-goto-results)
     (should (search-forward "t1.el" nil t))
