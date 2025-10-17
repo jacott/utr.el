@@ -313,4 +313,28 @@
     (should (equal (buffer-name) "t2.el"))
     (should (equal (utr--testname) "test2")))))
 
+(ert-deftest utr-find-test-limit-recent ()
+  (utr-my-test-fixture
+   (pf-my-test-fixture
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test1") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t2.el") "test2") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test5") :point 1))
+    (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test6") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test3") :point 1))
+
+    (utr-find-test '(4))
+    (should (equal 5 pf-limit-to-recent))
+    (utr-find-test 2)
+    (should (equal 2 pf-limit-to-recent))
+
+    (should (eq (current-local-map) utr-pf-local-map))
+    (should (pf--wait-for (lambda ()
+                            (goto-char (point-min))
+                            (search-forward "test.rs" nil t))))
+    (should
+     (save-excursion
+       (pf-goto-results)
+       (not (search-forward "test2" nil t)))))))
+
 ;;; utr-tests.el ends here

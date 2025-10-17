@@ -471,20 +471,25 @@ TEST-NAME contains the test to run or nil to run all tests."
   (compilation-start (utr--elisp-test-command test-name)
                      'utr-default-test-mode 'utr--default-test-buffer-name))
 
-(defun utr-pf-list-tests ()
+(defun utr--pf-list-tests ()
   "List tests matching TEXT filter using `project-find'."
-  (let ((list utr-history)
-        (l (length default-directory))
-        path key)
-    (while list
+  (let* ((list utr-history)
+         (l (length default-directory))
+         (count (or pf-limit-to-recent -1))
+         (known (and (> count 0) (make-hash-table :test #'equal)))
+         path key)
+    (while (and list (/= count 0))
       (setq path (utr--path list))
-      (setq key (if (string-prefix-p default-directory path)
-                    (progn (setq path (substring path l)) utr--key1)
-                  utr--key2))
-      (pf-match-line (concat key path ": " (or (utr--testname list) "")))
+      (unless (and known (gethash path known))
+        (when known (puthash path t known))
+        (setq count (1- count)
+              key (if (string-prefix-p default-directory path)
+                      (progn (setq path (substring path l)) utr--key1)
+                    utr--key2))
+        (pf-match-line (concat key path ": " (or (utr--testname list) ""))))
       (setq list (cdr list)))))
 
-(defun utr-pf-propertize-line (line)
+(defun utr--pf-propertize-line (line)
   "Add text properties to LINE before adding."
   (put-text-property 0 1 'invisible t line)
   (when-let* ((sep (string-search ": " line 1)))
@@ -523,17 +528,12 @@ is always called from the `project-find' buffer."
       (pf-quit)
       (utr-find-current))))
 
-(defun utr-pf-filter-changed (text _original)
-  "Update results with new filter TEXT."
-  (let ((inhibit-modification-hooks t)
-        (inhibit-read-only t))
-    (pf-build-regex text)
-    (utr-pf-list-tests)))
-
-(defun utr-find-test ()
+(defun utr-find-test (&optional arg)
   "Find a test from `utr-history'.
-Also allow managing the test history"
-  (interactive)
+Also allow managing the test history.  Use ARG to limit the number of
+tests listed.  A plain \\[universal-argument] ARG will limit to last 5
+tests from different files."
+  (interactive "P")
   (let ((inhibit-modification-hooks t)
         (inhibit-read-only t)
         (dir (pf-root-dir)))
@@ -542,10 +542,14 @@ Also allow managing the test history"
 
     (setq default-directory dir
           pf-find-function #'utr-pf-select-test
-          pf-propertize-line #'utr-pf-propertize-line
-          pf-resync-function #'utr-pf-list-tests)
+          pf-propertize-line #'utr--pf-propertize-line
+          pf-resync-function #'utr--pf-list-tests)
+    (when arg
+      (setq pf-limit-to-recent (if (integerp arg) arg 5)))
+
     (pf-clear-output)
     (pf-skip-prefix 1)
+    (utr--pf-list-tests)
     ))
 
 (defun utr-toggle-test-buffer ()
@@ -577,7 +581,7 @@ With plain \\[universal-argument] for ARG, delete all tests for selected file."
         (pf-resend-filter)
         (pf-skip-prefix 1)
         (pf-clear-output)
-        (utr-pf-list-tests))))
+        (utr--pf-list-tests))))
    (t
     (let* ((line (buffer-substring-no-properties (pf-selected-start) (pf-selected-end)))
            (entry (utr-get-test (pf-selected-start) (pf-selected-end)))
@@ -590,7 +594,7 @@ With plain \\[universal-argument] for ARG, delete all tests for selected file."
             (when ans
               (pf-post-process-filter (car ans) (cdr ans))))
         (setq utr-history (cdr entry))))
-    (utr-pf-list-tests))))
+    (utr--pf-list-tests))))
 
 (provide 'utr)
 ;;; utr.el ends here
