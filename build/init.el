@@ -14,9 +14,16 @@
 
 (package-initialize)
 
-(if (file-exists-p "build/project-find")
-    (add-to-list 'load-path "build/project-find")
-  (error "TODO: use-package project-find"))
+(let ((packages '(project-find))
+      p)
+  (while packages
+    (setq p (concat "build/" (symbol-name (car packages))))
+    (if (file-exists-p p)
+        (add-to-list 'load-path p)
+      (setq p (car packages))
+      (unless (package-installed-p p) (package-install p)))
+
+    (setq packages (cdr packages))))
 
 
 ;;; init.el ends here
