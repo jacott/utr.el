@@ -273,7 +273,7 @@
     (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test4") :point 1))
     (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
 
-    (utr-find-test)
+    (utr-find-test '(4))
     (should (pf--wait-for (lambda ()
                             (pf-goto-results)
                             (search-forward "~/src/another" nil t))))
@@ -294,7 +294,7 @@
     (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test3") :point 1))
     (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
 
-    (utr-find-test)
+    (utr-find-test '(4))
     (should (eq (current-local-map) utr-pf-local-map))
     (should (pf--wait-for (lambda ()
                             (goto-char (point-min))
@@ -324,7 +324,7 @@
     (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test6") :point 1))
     (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test3") :point 1))
 
-    (utr-find-test '(4))
+    (utr-find-test 5)
     (should (equal 5 pf-limit-to-recent))
     (utr-find-test 2)
     (should (equal 2 pf-limit-to-recent))
@@ -337,5 +337,26 @@
      (save-excursion
        (pf-goto-results)
        (not (search-forward "test2" nil t)))))))
+
+(ert-deftest utr-find-test-chronologicaly ()
+  (utr-my-test-fixture
+   (pf-my-test-fixture
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test1") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t2.el") "test2") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test5") :point 1))
+    (utr--add-test `((a-rust-test "~/src/another-test.rs" "ext") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test6") :point 1))
+    (utr--add-test `((my-test1 ,(concat default-directory "test/t1.el") "test3") :point 1))
+
+    (utr-find-test)
+
+    (should (eq (current-local-map) utr-pf-local-map))
+    (should (pf--wait-for (lambda ()
+                            (goto-char (point-min))
+                            (search-forward "test6" nil t))))
+    (should (search-forward "test.rs" nil t))
+    (should (search-forward "test5" nil t))
+    (should (search-forward "test2" nil t)))))
+
 
 ;;; utr-tests.el ends here

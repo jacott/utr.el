@@ -472,7 +472,7 @@ TEST-NAME contains the test to run or nil to run all tests."
                      'utr-default-test-mode 'utr--default-test-buffer-name))
 
 (defun utr--pf-list-tests ()
-  "List tests matching TEXT filter using `project-find'."
+  "Filter test names matching TEXT using `project-find'."
   (let* ((list utr-history)
          (l (length default-directory))
          (count (or pf-limit-to-recent -1))
@@ -488,6 +488,26 @@ TEST-NAME contains the test to run or nil to run all tests."
                     utr--key2))
         (pf-match-line (concat key path ": " (or (utr--testname list) ""))))
       (setq list (cdr list)))))
+
+(defun utr--pf-list-tests-cron ()
+  "Like `utr--pf-list-tests` but in chronological order."
+  (let* ((list utr-history)
+         (count (or pf-limit-to-recent -1))
+         (known (and (> count 0) (make-hash-table :test #'equal)))
+         (key 32)
+         path)
+    (while (and list (/= count 0))
+      (setq path (utr--path list))
+      (unless (and known (gethash path known))
+        (when known (puthash path t known))
+        (setq count (1- count)
+              key (min 126 (1+ key)))
+        (pf-match-line
+         (concat
+          (char-to-string key)
+          path ": " (or (utr--testname list) ""))))
+      (setq list (cdr list)))))
+
 
 (defun utr--pf-list-projects ()
   "List tests limiting to one test per project.
@@ -566,14 +586,14 @@ limit to last 5 tests from different projects."
     (setq default-directory dir
           pf-find-function #'utr-pf-select-test
           pf-propertize-line #'utr--pf-propertize-line
-          pf-resync-function #'utr--pf-list-tests)
+          pf-resync-function #'utr--pf-list-tests-cron)
     (cond
      ((or (eq arg t) (equal arg '(4)))
-      (setq pf-limit-to-recent 5))
+      (setq pf-resync-function #'utr--pf-list-tests))
      ((equal arg '(16))
       (setq
        pf-resync-function #'utr--pf-list-projects
-       pf-limit-to-recent 5))
+       pf-limit-to-recent 10))
      ((integerp arg)
       (setq pf-limit-to-recent arg)))
 
