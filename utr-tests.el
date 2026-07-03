@@ -308,6 +308,7 @@
     (search-forward "2~/src/another-test")
     (forward-line 0)
     (should (plist-get (text-properties-at (point)) 'invisible))
+    (goto-char (point-min))
     (pf-forward-line 2)
     (pf-find-selected)
     (should (equal (buffer-name) "t2.el"))

@@ -489,6 +489,28 @@ TEST-NAME contains the test to run or nil to run all tests."
         (pf-match-line (concat key path ": " (or (utr--testname list) ""))))
       (setq list (cdr list)))))
 
+(defun utr--pf-list-projects ()
+  "List tests limiting to one test per project.
+Match TEXT filter using `project-find'."
+  (let* ((list utr-history)
+         (l (length default-directory))
+         (count (or pf-limit-to-recent -1))
+         (known (make-hash-table :test #'equal))
+         path key pr pr-root)
+    (while (and list (/= count 0))
+      (setq path (utr--path list))
+      (setq pr (project-current nil path))
+      (unless (and pr
+                   (setq pr-root (project-root pr))
+                   (gethash pr-root known))
+        (when known (puthash pr-root t known))
+        (setq count (1- count)
+              key (if (string-prefix-p default-directory path)
+                      (progn (setq path (substring path l)) utr--key1)
+                    utr--key2))
+        (pf-match-line (concat key path ": " (or (utr--testname list) ""))))
+      (setq list (cdr list)))))
+
 (defun utr--pf-propertize-line (line)
   "Add text properties to LINE before adding."
   (put-text-property 0 1 'invisible t line)
@@ -532,7 +554,8 @@ is always called from the `project-find' buffer."
   "Find a test from `utr-history'.
 Also allow managing the test history.  Use ARG to limit the number of
 tests listed.  A plain \\[universal-argument] ARG will limit to last 5
-tests from different files."
+tests from different files.  A double \\[universal-argument] will
+limit to last 5 tests from different projects."
   (interactive "P")
   (let ((inhibit-modification-hooks t)
         (inhibit-read-only t)
@@ -544,13 +567,19 @@ tests from different files."
           pf-find-function #'utr-pf-select-test
           pf-propertize-line #'utr--pf-propertize-line
           pf-resync-function #'utr--pf-list-tests)
-    (when arg
-      (setq pf-limit-to-recent (if (integerp arg) arg 5)))
+    (cond
+     ((or (eq arg t) (equal arg '(4)))
+      (setq pf-limit-to-recent 5))
+     ((equal arg '(16))
+      (setq
+       pf-resync-function #'utr--pf-list-projects
+       pf-limit-to-recent 5))
+     ((integerp arg)
+      (setq pf-limit-to-recent arg)))
 
     (pf-clear-output)
     (pf-skip-prefix 1)
-    (utr--pf-list-tests)
-    ))
+    (funcall pf-resync-function)))
 
 (defun utr-toggle-test-buffer ()
   "Based on major-mode toggle between test buffer and production buffer."
